@@ -2,8 +2,9 @@ require("dotenv").config();
 
 const { chromium } = require("playwright");
 const { exec } = require("child_process");
+const { clearInterval } = require("timers");
 
-const NUM_GUESTS = 1;
+const NUM_GUESTS = 3;
 
 const main = async () => {
   const doSetup = async () => {
@@ -37,7 +38,12 @@ const main = async () => {
       .getByRole("combobox", { name: "Sort by" })
       .selectOption("ascDistance");
 
-    await page.waitForLoadState("networkidle", { timeout: 60 * 1000 });
+    try {
+      await page.waitForLoadState("domcontentloaded", { timeout: 60 * 1000 });
+    } catch (e) {
+      console.error(e);
+      postSetupLoop();
+    }
 
     const pageTitle = await page.title();
 
@@ -50,12 +56,17 @@ const main = async () => {
     try {
       await page.getByRole("button", { name: /search/i }).click();
     } catch {
-      exec("open -a chromium");
-      openHotelSearch();
+      console.error(e);
+      postSetupLoop();
       return;
     }
 
-    await page.waitForLoadState("networkidle", { timeout: 60 * 1000 });
+    try {
+      await page.waitForLoadState("domcontentloaded", { timeout: 60 * 1000 });
+    } catch (e) {
+      console.error(e);
+      postSetupLoop();
+    }
 
     const hotelItems = await page.locator(".hotel-item").all();
 
@@ -104,14 +115,22 @@ const main = async () => {
 
   const page = await doSetup();
 
-  await openHotelSearch();
+  let intervalId;
 
-  refreshAndCheckHotels();
-  setInterval(refreshAndCheckHotels, 1000 * 45);
+  async function postSetupLoop() {
+    if (intervalId) clearInterval(intervalId);
+
+    await openHotelSearch();
+
+    refreshAndCheckHotels();
+    intervalId = setInterval(refreshAndCheckHotels, 1000 * 45);
+  }
+
+  postSetupLoop();
 };
 
 try {
   main();
 } catch (err) {
-  console.log(err);
+  console.error(err);
 }
